@@ -1,0 +1,114 @@
+trigger: none 
+
+stages:
+- stage: Terraform_Plan
+  jobs:
+
+  - job: Build
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: TerraformTaskV4@4
+      displayName: Terraform init
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        backendServiceArm: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'
+        backendAzureRmResourceGroupName: 'G17-POC'
+        backendAzureRmStorageAccountName: 'tfstateg17poc'
+        backendAzureRmContainerName: 'sandbox-tfstate'
+        backendAzureRmKey: 'g17poc.terraform.tfstate'
+    - task: TerraformTaskV4@4
+      displayName: Terraform validate
+      inputs:
+        provider: 'azurerm'
+        command: 'validate'
+    - task: TerraformTaskV4@4
+      displayName: Terraform fmt
+      inputs:
+        provider: 'azurerm'
+        command: 'custom'
+        outputTo: 'console'
+        customCommand: 'fmt'
+        environmentServiceNameAzureRM: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'
+    - task: TerraformTaskV4@4
+      displayName: Terraform plan
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        commandOptions: '-out $(Build.SourcesDirectory)/tfplanfile --lock=false -var adminuser=$(adminuser) -var adminpassword=$(adminpassword)'
+        environmentServiceNameAzureRM: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'
+    - task: ArchiveFiles@2
+      displayName: Archive files
+      inputs:
+        rootFolderOrFile: '$(Build.SourcesDirectory)/'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+        replaceExistingArchive: true
+    - task: PublishBuildArtifacts@1
+      displayName: Publish Artifact
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: '$(Build.BuildId)-build'
+
+- stage: Terraform_Destroy_Dev
+  condition: succeeded()
+  jobs:
+  - deployment: Destroy
+    displayName: Destroy Terraform Resources for Dev
+    environment: sample1
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+
+          - task: TerraformTaskV4@4
+            displayName: Terraform init
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              backendServiceArm: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'
+              backendAzureRmResourceGroupName: 'G17-POC'
+              backendAzureRmStorageAccountName: 'tfstateg17poc'
+              backendAzureRmContainerName: 'sandbox-tfstate'
+              backendAzureRmKey: 'g17poc.terraform.tfstate'
+          - task: TerraformTaskV4@4
+            displayName: Terraform destroy
+            inputs:
+              provider: 'azurerm'
+              command: 'destroy'
+              commandOptions: '--auto-approve -lock=false -var adminuser=$(adminuser) -var adminpassword=$(adminpassword)'
+              environmentServiceNameAzureRM: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'
+
+
+- stage: Terraform_Destroy_Test
+  condition: succeeded()
+  jobs:
+  - deployment: Destroy
+    displayName: Destroy Terraform Resources for Test
+    environment: sample2
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+
+          - task: TerraformTaskV4@4
+            displayName: Terraform init
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              backendServiceArm: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'
+              backendAzureRmResourceGroupName: 'G17-POC'
+              backendAzureRmStorageAccountName: 'tfstateg17poc'
+              backendAzureRmContainerName: 'sandbox-tfstate'
+              backendAzureRmKey: 'g17poc.terraform.tfstate'
+          - task: TerraformTaskV4@4
+            displayName: Terraform destroy
+            inputs:
+              provider: 'azurerm'
+              command: 'destroy'
+              commandOptions: '--auto-approve -lock=false -var adminuser=$(adminuser) -var adminpassword=$(adminpassword)'
+              environmentServiceNameAzureRM: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'

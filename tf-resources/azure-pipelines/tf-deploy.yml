@@ -1,0 +1,118 @@
+#trigger:
+#- main
+trigger: none 
+
+variables:
+- group: g17-variable-group
+
+stages:
+- stage: Terraform_plan
+  jobs:
+  - job: Build
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - checkout: self
+    - task: TerraformTaskV4@4
+      displayName: Terraform init
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        backendServiceArm: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'
+        backendAzureRmResourceGroupName: 'G17-POC'
+        backendAzureRmStorageAccountName: 'tfstateg17poc'
+        backendAzureRmContainerName: 'sandbox-tfstate'
+        backendAzureRmKey: 'g17poc.terraform.tfstate'
+    - task: TerraformTaskV4@4
+      displayName: Terraform validate
+      inputs:
+        provider: 'azurerm'
+        command: 'validate'
+
+    - task: TerraformTaskV4@4
+      displayName: Terraform fmt
+      inputs:
+        provider: 'azurerm'
+        command: 'custom'
+        outputTo: 'console'
+        customCommand: 'fmt'
+        environmentServiceNameAzureRM: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'
+    - task: TerraformTaskV4@4
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        commandOptions: '-out $(Build.SourcesDirectory)/tfplanfile --lock=false -var adminuser=$(adminuser) -var adminpassword=$(adminpassword)'
+        environmentServiceNameAzureRM: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'
+    - task: ArchiveFiles@2
+      displayName: Archive files
+      inputs:
+        rootFolderOrFile: '$(Build.SourcesDirectory)/'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+        replaceExistingArchive: true
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: '$(Build.BuildId)-build'
+        publishLocation: 'Container'    
+
+- stage: Deploy_On_Dev
+  condition: succeeded()
+  jobs:
+  - deployment: DeployToSample1
+    displayName: sample1
+    environment: sample1
+    strategy:
+     runOnce:
+       deploy:
+        steps:
+        - checkout: self
+        - task: TerraformTaskV4@4
+          displayName: Terraform init
+          inputs:
+            provider: 'azurerm'
+            command: 'init'
+            backendServiceArm: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'
+            backendAzureRmResourceGroupName: 'G17-POC'
+            backendAzureRmStorageAccountName: 'tfstateg17poc'
+            backendAzureRmContainerName: 'sandbox-tfstate'
+            backendAzureRmKey: 'g17poc.terraform.tfstate'
+            workingDirectory: '$(System.DefaultWorkingDirectory)'
+        - task: TerraformTaskV4@4
+          displayName: Terraform Apply
+          inputs:
+            provider: 'azurerm'
+            command: 'apply'
+            commandOptions: '--auto-approve -lock=false -var adminuser=$(adminuser) -var adminpassword=$(adminpassword)'
+            environmentServiceNameAzureRM: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'
+
+- stage: Deploy_On_Test
+  condition: succeeded()
+  jobs:
+  - deployment: DeployToSample2
+    displayName: sample2
+    environment: sample2
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - task: TerraformTaskV4@4
+            displayName: Terraform init
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              backendServiceArm: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'
+              backendAzureRmResourceGroupName: 'G17-POC'
+              backendAzureRmStorageAccountName: 'tfstateg17poc'
+              backendAzureRmContainerName: 'sandbox-tfstate'
+              backendAzureRmKey: 'g17poc.terraform.tfstate'
+              workingDirectory: '$(System.DefaultWorkingDirectory)'
+          - task: TerraformTaskV4@4
+            displayName: Terraform Apply
+            inputs:
+              provider: 'azurerm'
+              command: 'apply'
+              commandOptions: '--auto-approve -lock=false -var adminuser=$(adminuser) -var adminpassword=$(adminpassword)'
+              environmentServiceNameAzureRM: 'Visual Studio Professional Subscription(4c29b517-de9f-4979-ac20-d9ab394f62ee)'
